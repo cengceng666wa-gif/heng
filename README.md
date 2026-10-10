@@ -124,17 +124,27 @@ pnpm build        # 产出 dist/
 pnpm preview      # 预览构建产物
 ```
 
-### 手机上打开
+### 手机上安装
 
-`pnpm dev` 会打印一个 `Network:` 地址（形如 `http://192.168.x.x:5173`）。
-手机 Chrome 打开它 → 菜单 → **添加到主屏幕**。
+线上地址：**https://cengceng666wa-gif.github.io/heng/**
+
+用手机 Chrome 打开 → 右上角菜单 → **添加到主屏幕**。
+之后就是一个全屏 App，有图标、无地址栏、断网也能用。
 
 ### 部署
 
-推送到 GitHub 后，在 Cloudflare Pages 连接本仓库：
+推到 `main` 分支即自动构建发布（GitHub Actions，见 `.github/workflows/deploy.yml`）。
+无需任何额外账号或配置。
 
-- Build command: `pnpm build`
-- Output directory: `dist`
+> 如果 GitHub Pages 在国内访问太慢，可以换成 Cloudflare Pages：
+> 连同一个仓库，Build command 填 `pnpm build`，Output directory 填 `dist`。
+
+### 重新生成图标
+
+```bash
+python scripts/make_icons.py
+```
+
 
 ---
 

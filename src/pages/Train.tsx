@@ -26,6 +26,7 @@ import {
 import type { Exercise, ProgramDay, Session, SetLog } from '../types'
 import { MUSCLE_LABEL } from '../types'
 import { addDays, isoWeekday, todayISO } from '../lib/tdee'
+import { progressionSuggestions, type ProgressionSuggestion } from '../lib/analytics'
 
 interface Props {
   onChanged: () => void | Promise<void>
@@ -45,6 +46,7 @@ export default function Train({ onChanged }: Props) {
   const [sets, setSets] = useState<SetLog[]>([])
   const [pending, setPending] = useState<Record<number, Pending>>({})
   const [lastPerf, setLastPerf] = useState<Record<number, string>>({})
+  const [suggestions, setSuggestions] = useState<Map<number, ProgressionSuggestion>>(new Map())
   const [weekDone, setWeekDone] = useState(0)
   const [tick, setTick] = useState(0)
 
@@ -65,6 +67,14 @@ export default function Train({ onChanged }: Props) {
       setOpenIndex(target ? target.index : null)
     })()
   }, [])
+
+  // 渐进超负荷建议：只对「今天以前」的记录做判断
+  useEffect(() => {
+    void (async () => {
+      const sg = await progressionSuggestions(todayISO())
+      setSuggestions(new Map(sg.map((s) => [s.exerciseId, s])))
+    })()
+  }, [tick])
 
   // 本周完成度
   useEffect(() => {
@@ -292,6 +302,8 @@ export default function Train({ onChanged }: Props) {
 
                       {ex?.cues && <div className="exercise-cues">{ex.cues}</div>}
 
+                      <SuggestionHint suggestion={suggestions.get(item.exerciseId)} />
+
                       <div className="sets">
                         {Array.from({ length: item.sets }, (_, i) => {
                           const row = itemSets.find((s) => s.setIndex === i)
@@ -410,6 +422,32 @@ function isDayComplete(day: ProgramDay, rows: SetLog[]): boolean {
     const done = rows.filter((r) => r.exerciseId === item.exerciseId && r.done).length
     return done >= item.sets
   })
+}
+
+/**
+ * 「该加重了」提示。
+ *
+ * 只在真的有依据时出现——渐进超负荷最容易失败的地方不是不知道该加重，
+ * 而是没人提醒，于是半年都用同一个重量。
+ */
+function SuggestionHint({ suggestion }: { suggestion?: ProgressionSuggestion }) {
+  if (!suggestion) return null
+
+  if (suggestion.action === 'increase') {
+    return (
+      <div className="exercise-cues" style={{ color: 'var(--ok)' }}>
+        ↑ 该加重了：{suggestion.reason}，建议 +{suggestion.delta}kg
+      </div>
+    )
+  }
+  if (suggestion.action === 'back') {
+    return (
+      <div className="exercise-cues" style={{ color: 'var(--warn)' }}>
+        ↓ {suggestion.reason}
+      </div>
+    )
+  }
+  return null
 }
 
 function fmtW(n: number): string {

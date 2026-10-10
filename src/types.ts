@@ -62,6 +62,8 @@ export interface Profile {
   tdeeOverride?: number
   /** 是否启用自适应 TDEE */
   adaptiveEnabled: boolean
+  /** 上一次减载周的周一日期，用于 Deload 提醒 */
+  lastDeloadDate?: string
   setupDone: boolean
   createdAt: string
 }

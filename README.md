@@ -58,28 +58,34 @@
 
 ## 功能范围
 
-### v1（当前目标）
+### v1 · 已完成
 
-- [ ] 个人食物库 + 模糊搜索 + 一键复用
-- [ ] 今日摄入 vs 目标：热量 + 蛋白/脂肪/碳水
-- [ ] 自适应 TDEE 每周重算
-- [ ] 体重录入 + EWMA 趋势曲线
-- [ ] 训练计划 + 三层打勾划线
-- [ ] 组记录（重量 / 次数 / RPE）
-- [ ] 导出 JSON / CSV
-- [ ] 离线可用（Service Worker）
+- [x] 个人食物库 + 模糊搜索 + 一键复用
+- [x] 今日摄入 vs 目标：热量 + 蛋白/脂肪/碳水
+- [x] 自适应 TDEE 每周重算
+- [x] 体重录入 + EWMA 趋势曲线（标准/非标准称重分级）
+- [x] 训练计划 + 三层打勾划线 + 「今天到此为止」逃生通道
+- [x] 组记录（重量 / 次数 / RPE）
+- [x] 导出 JSON / CSV，支持从备份恢复
+- [x] 离线可用（Service Worker）
 
-### v2（以后）
+### v2 · 已完成
 
-- [ ] 周报（平均摄入 / 体重变化 / 训练完成率）
-- [ ] e1RM 曲线 + 渐进超负荷建议
-- [ ] 每肌群周组数热力图，对照 MEV–MRV
-- [ ] Deload 提醒
-- [ ] 平台期诊断
+- [x] 周报（平均摄入 / 体重变化 / 训练完成率 / 达标天数）
+- [x] e1RM 曲线 + 渐进超负荷建议（「该加重了」）
+- [x] 每肌群周组数热力图，对照 MEV–MRV
+- [x] Deload 提醒
+- [x] 平台期诊断（区分「记漏了」和「代谢适应」）
+- [x] AI 估算结果粘贴解析（豆包 → 复制 → 粘贴入库）
+- [x] Capacitor 打包真 APK
 
 ### 明确不做
 
-账号体系、云同步、社交、排行榜、动效、手环接入。
+账号体系、云同步、社交、排行榜、动效、手环接入、**内置拍照识别 API**。
+
+最后一条值得解释：内置视觉 API 意味着要么作者替你付钱，要么把 key 塞进前端代码。
+所以改用**粘贴解析**——你在豆包那边识别（免费、中文食物更准），复制文字，
+App 负责把文字拆成结构化条目。App 本身因此可以保持**完全离线**。
 
 ---
 
@@ -99,6 +105,29 @@
 
 ---
 
+## 关键设计：打卡用「周达标天数」而不是「连续 N 天」
+
+Streak 靠损失厌恶驱动，副作用是**用户为了不断签开始造假**——随手填个数字应付。
+记录类 App 一旦数据失真就彻底失去意义。
+
+所以主指标是**「本周达标 X/7 天」**：不达标不惩罚，趋势对了就奖励。
+
+---
+
+## 关键设计：平台期要分三种情况
+
+体重趋势连续两周不动，可能是完全不同的三件事：
+
+| 情况 | 判断依据 | 对策 |
+| --- | --- | --- |
+| 记漏了 | 有记录的天数 < 11/14 | 先补记录，别急着改参数 |
+| 吃超了 | 平均摄入 > 目标 +100 | 砍掉超出的部分 |
+| 代谢适应 | 记录完整、摄入没超 | 降 100–150 kcal 或多走 2000 步 |
+
+不分青红皂白就让人「再少吃点」，是大多数减脂失败的原因。
+
+---
+
 ## 技术栈
 
 | 层 | 选型 | 为什么 |
@@ -108,10 +137,12 @@
 | 存储 | Dexie (IndexedDB) | 纯本地，无服务器，离线天然可用 |
 | 图表 | 手写 SVG | 一条趋势线不值得引入 recharts |
 | 离线 | vite-plugin-pwa | 加到主屏幕后即全屏 App |
-| 部署 | Cloudflare Pages | 免费，连 GitHub 自动部署 |
-| 升级路径 | Capacitor | 以后要真 APK，同一套代码不重写 |
+| 测试 | Vitest | 粘贴解析器格式多变，必须有回归测试 |
+| 部署 | GitHub Pages | 免费，推 main 自动发布 |
+| 打包 | Capacitor 8 | 同一套代码出真 APK，零重写 |
 
 **数据完全存在手机本地 IndexedDB 里**，不上传任何服务器。
+全 App 唯一的网络请求是 Service Worker 拉静态资源。
 
 ---
 
@@ -145,6 +176,68 @@ pnpm preview      # 预览构建产物
 python scripts/make_icons.py
 ```
 
+### 跑测试
+
+```bash
+pnpm test
+```
+
+粘贴解析器的格式回归测试（对应 `src/lib/parseNutrition.test.ts`）。
+换 AI 模型或改提问方式导致输出格式变了，改解析器前先跑这个。
+
+---
+
+## 打包成 Android APK（可选）
+
+PWA 已经够用，但 APK 有两个优势：**不依赖网络**（静态资源全打包进去，
+GitHub Pages 在国内慢也无所谓）、**方便发给别人**（一个文件 vs 一段安装说明）。
+
+### 一次性环境准备（约 2–3 GB）
+
+```powershell
+# 1. JDK 21（Capacitor 8 的 sourceCompatibility 是 21，JDK 17 会报「无效的源发行版：21」）
+winget install --id Microsoft.OpenJDK.21
+
+# 2. Android 命令行工具
+#    下载 https://dl.google.com/android/repository/commandlinetools-win-*_latest.zip
+#    解压到 D:\Android\Sdk\cmdline-tools\latest
+
+# 3. 装 SDK 包（Capacitor 8 需要 compileSdk 36）
+$env:JAVA_HOME="C:\Program Files\Microsoft\jdk-21.0.12.101-hotspot"
+D:\Android\Sdk\cmdline-tools\latest\bin\sdkmanager.bat `
+  --sdk_root=D:\Android\Sdk `
+  --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+# 4. 告诉 Gradle SDK 在哪（此文件已被 gitignore）
+echo "sdk.dir=D:/Android/Sdk" > android/local.properties
+```
+
+### 编译
+
+每次新开的终端都要先设 `JAVA_HOME`：
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Microsoft\jdk-21.0.12.101-hotspot"
+$env:ANDROID_HOME = "D:\Android\Sdk"
+```
+
+```bash
+pnpm apk          # debug 版
+pnpm apk:release  # release 版，需要先配签名
+```
+
+产物：`android/app/build/outputs/apk/debug/app-debug.apk`
+
+拷到手机上点开安装（需要允许「安装未知来源应用」）。
+
+### 改了代码之后
+
+```bash
+pnpm cap:sync     # 重新构建 web 产物并同步进 android 工程
+pnpm apk
+```
+
+---
 
 ---
 
@@ -162,13 +255,21 @@ Android Chrome 的 PWA 存储比较稳，但仍建议定期用 App 内的「导�
 ```
 src/
   lib/
-    tdee.ts        BMR / TDEE / EWMA / 自适应算法
-    ...            日期、单位换算等工具
+    tdee.ts            BMR / TDEE / EWMA / 自适应算法
+    analytics.ts       周报 / e1RM / 肌群容量 / Deload / 平台期诊断
+    parseNutrition.ts  AI 估算文本 → 结构化食物条目
+    compute.ts         把各表数据聚合成界面所需的「当前状态」
+    backup.ts          导出 / 导入
   data/
-    foods.ts       第一版食物库种子数据
-    program.ts     4 天上下肢训练计划
-  db.ts            Dexie 表定义
-  pages/           今日 / 训练 / 趋势 / 设置
+    foods.ts           食物库种子数据（80 条，含新疆本地食物）
+    program.ts         4 天上下肢训练计划 + 20 个动作
+  components/
+    FoodPicker.tsx     食物选择弹层
+    PasteEstimate.tsx  粘贴解析弹层
+    WeightChart.tsx    体重趋势（手写 SVG）
+    E1rmChart.tsx      力量进度（手写 SVG）
+  pages/               今天 / 训练 / 趋势 / 报告 / 设置
+  db.ts                Dexie 表定义与种子
 ```
 
 ---

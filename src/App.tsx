@@ -6,14 +6,16 @@ import Setup from './pages/Setup'
 import Today from './pages/Today'
 import Train from './pages/Train'
 import Trend from './pages/Trend'
+import Report from './pages/Report'
 import Settings from './pages/Settings'
 
-type Tab = 'today' | 'train' | 'trend' | 'settings'
+type Tab = 'today' | 'train' | 'trend' | 'report' | 'settings'
 
 const TABS: { key: Tab; icon: string; label: string }[] = [
   { key: 'today', icon: '◉', label: '今天' },
   { key: 'train', icon: '▤', label: '训练' },
   { key: 'trend', icon: '◪', label: '趋势' },
+  { key: 'report', icon: '◫', label: '报告' },
   { key: 'settings', icon: '⚙', label: '设置' }
 ]
 
@@ -70,6 +72,9 @@ export default function App() {
       {tab === 'today' && <Today profile={profile} computed={computed} onChanged={refresh} />}
       {tab === 'train' && <Train onChanged={refresh} />}
       {tab === 'trend' && <Trend profile={profile} computed={computed} onChanged={refresh} />}
+      {tab === 'report' && (
+        <Report profile={profile} computed={computed} onChanged={refresh} />
+      )}
       {tab === 'settings' && (
         <Settings profile={profile} computed={computed} onChanged={refresh} />
       )}

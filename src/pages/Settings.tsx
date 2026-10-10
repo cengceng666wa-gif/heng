@@ -2,7 +2,7 @@
  * 设置：档案、算法开关、自定义食物、数据导出。
  */
 
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { db, saveProfile } from '../db'
 import type { Food, Profile } from '../types'
 import type { Computed } from '../lib/compute'
@@ -28,6 +28,18 @@ export default function Settings({ profile, computed, onChanged }: Props) {
   const [fP, setFP] = useState('')
   const [fF, setFF] = useState('')
   const [fC, setFC] = useState('')
+
+  // 我加的食物列表（含 AI 估算粘贴进来的）
+  const [customFoods, setCustomFoods] = useState<Food[]>([])
+
+  const reloadCustom = useCallback(async () => {
+    const list = await db.foods.filter((f) => f.isCustom === true).toArray()
+    setCustomFoods(list.sort((a, b) => (a.name < b.name ? -1 : 1)))
+  }, [])
+
+  useEffect(() => {
+    void reloadCustom()
+  }, [reloadCustom])
 
   const dirty = JSON.stringify(p) !== JSON.stringify(profile)
 
@@ -67,6 +79,21 @@ export default function Settings({ profile, computed, onChanged }: Props) {
     setFF('')
     setFC('')
     setMsg('已加入食物库')
+    await reloadCustom()
+  }
+
+  async function deleteFood(id?: number) {
+    if (!id) return
+    const used = await db.logs.where('foodId').equals(id).count()
+    if (used > 0) {
+      const ok = confirm(
+        `这个食物已经被记录过 ${used} 次。\n删掉它不会影响已有的历史记录（记录存的是快照）。\n确定删除？`
+      )
+      if (!ok) return
+    }
+    await db.foods.delete(id)
+    await reloadCustom()
+    setMsg('已删除')
   }
 
   async function handleImport(file: File) {
@@ -314,6 +341,58 @@ export default function Settings({ profile, computed, onChanged }: Props) {
             </button>
           </>
         )}
+
+        {customFoods.length > 0 && (
+          <div style={{ marginTop: showFood ? 16 : 12 }}>
+            <div className="faint" style={{ marginBottom: 6 }}>
+              我加的 {customFoods.length} 条（含 AI 估算粘贴进来的）：
+            </div>
+            {customFoods.map((f) => (
+              <div className="log-item" key={f.id}>
+                <div className="grow">
+                  <div className="log-name">{f.name}</div>
+                  <div className="log-macro">
+                    {Math.round(f.kcal)} kcal · {f.unitName}
+                    {f.category === 'AI 估算' && <span className="badge">AI</span>}
+                  </div>
+                </div>
+                <button
+                  className="faint"
+                  style={{ padding: '4px 2px 4px 10px', fontSize: 16 }}
+                  onClick={() => void deleteFood(f.id)}
+                  aria-label="删除"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* AI 估算粘贴 */}
+      <div className="card">
+        <div className="card-title">用豆包估算，粘贴进 App</div>
+        <div className="faint" style={{ lineHeight: 1.7 }}>
+          这个 App <b>不内置</b>拍照识别，因为它不联网。推荐的流程是：
+          <br />
+          <br />
+          <b>①</b> 在豆包里拍照，让它估算这顿饭的热量和三大营养素
+          <br />
+          <b>②</b> 复制豆包的回答
+          <br />
+          <b>③</b> 回到「今天」页点 <b>+ 添加食物 → 📋 粘贴</b>，粘进去
+          <br />
+          <br />
+          解析器认得 markdown 表格、分点列表、一行一条这几种格式，
+          拆出来的条目可以直接改数值再入库。
+          <br />
+          <br />
+          <span className="faint">
+            比内置 API 好在：不花钱、不失联、中文食物识别更准，
+            而且照片只经过你信任的那个 App。
+          </span>
+        </div>
       </div>
 
       {/* 数据 */}

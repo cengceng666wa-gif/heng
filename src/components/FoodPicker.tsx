@@ -12,20 +12,25 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { db } from '../db'
 import type { Food, MealKey } from '../types'
 import { MEAL_LABEL } from '../types'
+import type { ParsedItem } from '../lib/parseNutrition'
+import PasteEstimate from './PasteEstimate'
 
 interface Props {
   meal: MealKey
   onClose: () => void
   onPick: (food: Food, qty: number) => void | Promise<void>
+  /** 粘贴解析确认后的结果，由父组件负责入库 */
+  onPasteItems: (items: ParsedItem[]) => void | Promise<void>
 }
 
 type TabKey = 'common' | 'recent' | 'all' | 'custom'
 
-export default function FoodPicker({ meal, onClose, onPick }: Props) {
+export default function FoodPicker({ meal, onClose, onPick, onPasteItems }: Props) {
   const [foods, setFoods] = useState<Food[]>([])
   const [tab, setTab] = useState<TabKey>('common')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Food | null>(null)
+  const [showPaste, setShowPaste] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -74,7 +79,17 @@ export default function FoodPicker({ meal, onClose, onPick }: Props) {
   return (
     <div className="sheet-mask" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
-        {selected ? (
+        {showPaste ? (
+          <PasteEstimate
+            meal={meal}
+            onClose={() => setShowPaste(false)}
+            onConfirm={async (items) => {
+              await onPasteItems(items)
+              setShowPaste(false)
+              onClose()
+            }}
+          />
+        ) : selected ? (
           <QtyStep
             food={selected}
             meal={meal}
@@ -87,6 +102,9 @@ export default function FoodPicker({ meal, onClose, onPick }: Props) {
               <div className="grow">
                 <div className="sheet-title">添加到{MEAL_LABEL[meal]}</div>
               </div>
+              <button className="btn ghost sm" onClick={() => setShowPaste(true)}>
+                📋 粘贴
+              </button>
               <button className="btn ghost sm" onClick={onClose}>
                 关闭
               </button>

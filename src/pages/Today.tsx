@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   addLog,
   dailyIntakeMap,
+  db,
   deleteLog,
   logsForDate
 } from '../db'
@@ -16,8 +17,8 @@ import type { DayTotals, Food, LogEntry, MealKey, Profile } from '../types'
 import { MEAL_LABEL, MEAL_ORDER } from '../types'
 import type { Computed } from '../lib/compute'
 import { addDays, todayISO } from '../lib/tdee'
+import type { ParsedItem } from '../lib/parseNutrition'
 import FoodPicker from '../components/FoodPicker'
-
 interface Props {
   profile: Profile
   computed: Computed
@@ -72,6 +73,48 @@ export default function Today({ computed, onChanged }: Props) {
 
   async function handleAdd(food: Food, meal: MealKey, qty: number) {
     await addLog(food, date, meal, qty)
+    await load()
+    await onChanged()
+  }
+
+  /**
+   * 粘贴解析的结果入库。
+   *
+   * 策略：先按「名称 + 单位」在食物库里找，找到就复用，找不到才新建。
+   * 这样同一道菜粘两次不会产生两条重复条目，而且第二次就能一键复用了。
+   */
+  async function handlePasteItems(items: ParsedItem[]) {
+    const meal = pickerMeal
+    if (!meal) return
+
+    for (const it of items) {
+      const existing = await db.foods
+        .filter((f) => f.name === it.name && f.unitName === it.unit)
+        .first()
+
+      let food: Food
+      if (existing) {
+        food = existing
+      } else {
+        const id = await db.foods.add({
+          name: it.name,
+          aliases: [],
+          category: 'AI 估算',
+          unitName: it.unit,
+          kcal: it.kcal,
+          protein: it.protein,
+          fat: it.fat,
+          carb: it.carb,
+          isCustom: true,
+          useCount: 0,
+          note: '由 AI 估算结果粘贴导入，数值建议核对'
+        })
+        food = (await db.foods.get(id))!
+      }
+
+      await addLog(food, date, meal, it.qty)
+    }
+
     await load()
     await onChanged()
   }
@@ -193,6 +236,7 @@ export default function Today({ computed, onChanged }: Props) {
             await handleAdd(food, pickerMeal, qty)
             setPickerMeal(null)
           }}
+          onPasteItems={handlePasteItems}
         />
       )}
     </div>
